@@ -16,8 +16,8 @@ const { login, isLoading, isAuthenticated } = useAuth()
 const route = useRoute()
 
 // Form state
-const email = ref('demo@example.com') // Pre-filled for demo
-const password = ref('password123')
+const email = ref('')
+const password = ref('')
 const error = ref('')
 const showPassword = ref(false)
 
@@ -129,12 +129,7 @@ const handleSubmit = async () => {
           {{ isLoading ? 'Signing in...' : 'Sign in' }}
         </button>
 
-        <!-- Demo Hint -->
-        <div class="demo-hint">
-          <p class="text-sm text-muted text-center">
-            Demo credentials are pre-filled. Just click "Sign in"!
-          </p>
-        </div>
+
       </form>
     </div>
   </div>
@@ -215,12 +210,7 @@ const handleSubmit = async () => {
   font-size: var(--font-size-sm);
 }
 
-.demo-hint {
-  margin-top: var(--spacing-2);
-  padding: var(--spacing-3);
-  background-color: var(--color-bg-tertiary);
-  border-radius: var(--radius-md);
-}
+
 
 /* Loading spinner */
 .spinner {
