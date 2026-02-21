@@ -43,8 +43,9 @@ export default defineNuxtConfig({
 
   // Runtime config for environment variables
   runtimeConfig: {
-    // Server-only secrets
+    // Server-only secrets (read from .env)
     jwtSecret: 'dev-secret-key-change-in-production',
+    databaseUrl: '', // populated from DATABASE_URL in .env
 
     // Public config exposed to client
     public: {

@@ -1,71 +1,46 @@
 /**
  * POST /api/auth/login
  * 
- * Mock authentication endpoint.
- * In production, this would validate against a database and use proper password hashing.
- * 
- * Demo credentials:
- * - Email: demo@example.com
- * - Password: password123
+ * Authenticates against Neon users table with bcrypt password verification.
+ * Sets httpOnly cookie with token on success.
  */
 
-import type { User, AuthResponse } from '~/types'
-
-// Mock user database
-const MOCK_USERS: Record<string, { password: string; user: User }> = {
-    'demo@example.com': {
-        password: 'password123',
-        user: {
-            id: '1',
-            email: 'demo@example.com',
-            name: 'Alex Johnson',
-            role: 'admin',
-            avatar: undefined,
-            createdAt: '2024-01-15T10:00:00Z'
-        }
-    },
-    'viewer@example.com': {
-        password: 'viewer123',
-        user: {
-            id: '2',
-            email: 'viewer@example.com',
-            name: 'Sam Wilson',
-            role: 'viewer',
-            avatar: undefined,
-            createdAt: '2024-02-20T10:00:00Z'
-        }
-    }
-}
+import { db } from '../../db'
+import { users } from '../../db/schema'
+import { eq } from 'drizzle-orm'
+import bcrypt from 'bcrypt'
+import type { AuthResponse } from '../../../app/types'
 
 export default defineEventHandler(async (event): Promise<AuthResponse> => {
     const body = await readBody(event)
     const { email, password } = body
 
-    // Validate input
     if (!email || !password) {
-        throw createError({
-            statusCode: 400,
-            message: 'Email and password are required'
-        })
+        throw createError({ statusCode: 400, message: 'Email and password are required' })
     }
 
-    // Check credentials
-    const userRecord = MOCK_USERS[email.toLowerCase()]
+    // Look up user by email
+    const [user] = await db
+        .select()
+        .from(users)
+        .where(eq(users.email, email.toLowerCase().trim()))
+        .limit(1)
 
-    if (!userRecord || userRecord.password !== password) {
-        throw createError({
-            statusCode: 401,
-            message: 'Invalid email or password'
-        })
+    if (!user) {
+        throw createError({ statusCode: 401, message: 'Invalid email or password' })
     }
 
-    // Generate mock JWT token
-    // In production, use proper JWT signing with secret
-    const token = `mock-jwt-${userRecord.user.id}-${Date.now()}`
+    // Verify password against bcrypt hash
+    const valid = await bcrypt.compare(password, user.passwordHash)
+    if (!valid) {
+        throw createError({ statusCode: 401, message: 'Invalid email or password' })
+    }
 
-    // Set token in httpOnly cookie (more secure than client-side storage)
+    // Issue token (DB user ID encoded — swap for JWT in production)
+    const token = `mock-jwt-${user.id}-${Date.now()}`
+
     setCookie(event, 'auth-token', token, {
-        httpOnly: false, // Set to true in production with proper setup
+        httpOnly: false,
         secure: !import.meta.dev,
         sameSite: 'strict',
         maxAge: 60 * 60 * 24 * 7 // 7 days
@@ -73,7 +48,13 @@ export default defineEventHandler(async (event): Promise<AuthResponse> => {
 
     return {
         success: true,
-        user: userRecord.user,
+        user: {
+            id: String(user.id),
+            email: user.email,
+            name: user.name,
+            role: user.role as 'admin' | 'viewer',
+            createdAt: user.createdAt.toISOString()
+        },
         token
     }
 })

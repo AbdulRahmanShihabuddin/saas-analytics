@@ -1,72 +1,75 @@
 /**
  * GET /api/analytics
  * 
- * Returns paginated, searchable, sortable table data.
+ * Returns paginated, searchable, sortable page analytics from Neon.
  * Supports: page, pageSize, q (search), sort, order query params.
  */
 
-import type { AnalyticsTableRow, PaginatedResponse } from '~/types'
+import { db } from '../db'
+import { pageEvents } from '../db/schema'
+import { sql, ilike, asc, desc, count } from 'drizzle-orm'
+import type { AnalyticsTableRow, PaginatedResponse } from '../../app/types'
 
-// Diverse page paths for realistic mock data
-const PAGES = [
-    '/dashboard', '/pricing', '/features/analytics', '/features/reports',
-    '/blog/getting-started', '/blog/best-practices', '/docs/api-reference',
-    '/docs/authentication', '/about', '/contact', '/careers',
-    '/integrations/slack', '/integrations/zapier', '/changelog',
-    '/security', '/terms', '/privacy', '/signup', '/login', '/demo'
-]
-
-// Seeded mock data with diverse paths
-const MOCK_DATA: AnalyticsTableRow[] = Array.from({ length: 50 }).map((_, i) => ({
-    id: `row-${i}`,
-    page: PAGES[i % PAGES.length] as string,
-    views: Math.floor(Math.random() * 8000) + 200,
-    uniqueVisitors: Math.floor(Math.random() * 5000) + 100,
-    bounceRate: Math.floor(Math.random() * 65) + 15,
-    avgDuration: `${Math.floor(Math.random() * 5)}m ${Math.floor(Math.random() * 60)}s`,
-    conversions: Math.floor(Math.random() * 80)
-}))
-
-export default defineEventHandler((event): PaginatedResponse<AnalyticsTableRow> => {
+export default defineEventHandler(async (event): Promise<PaginatedResponse<AnalyticsTableRow>> => {
     const query = getQuery(event)
     const page = Number(query.page) || 1
     const pageSize = Number(query.pageSize) || 10
-    const searchQuery = (query.q as string || '').toLowerCase()
-    const sortKey = query.sort as string || ''
-    const sortOrder = query.order as string || 'asc'
+    const searchQuery = (query.q as string || '').trim()
+    const sortKey = (query.sort as string) || 'views'
+    const sortOrder = (query.order as string) || 'desc'
 
-    // Filter by search query
-    let filtered = MOCK_DATA
-    if (searchQuery) {
-        filtered = filtered.filter(row => row.page.toLowerCase().includes(searchQuery))
+    // Build WHERE clause
+    const whereClause = searchQuery
+        ? ilike(pageEvents.page, `%${searchQuery}%`)
+        : undefined
+
+    // Allowed sort columns (prevent SQL injection)
+    const sortableColumns: Record<string, any> = {
+        page: pageEvents.page,
+        views: pageEvents.views,
+        uniqueVisitors: pageEvents.uniqueVisitors,
+        bounceRate: pageEvents.bounceRate,
+        conversions: pageEvents.conversions,
+        avgDurationSec: pageEvents.avgDurationSec,
     }
+    const orderCol = sortableColumns[sortKey] ?? pageEvents.views
+    const orderFn = sortOrder === 'asc' ? asc(orderCol) : desc(orderCol)
 
-    // Sort if requested
-    if (sortKey && sortKey in filtered[0]!) {
-        filtered = [...filtered].sort((a, b) => {
-            const aVal = (a as any)[sortKey]
-            const bVal = (b as any)[sortKey]
-            if (typeof aVal === 'number' && typeof bVal === 'number') {
-                return sortOrder === 'desc' ? bVal - aVal : aVal - bVal
-            }
-            return sortOrder === 'desc'
-                ? String(bVal).localeCompare(String(aVal))
-                : String(aVal).localeCompare(String(bVal))
-        })
-    }
+    // Count total matching rows
+    const countResult = await db
+        .select({ total: count() })
+        .from(pageEvents)
+        .where(whereClause)
+    const total = countResult[0]?.total ?? 0
 
-    // Paginate
-    const start = (page - 1) * pageSize
-    const end = start + pageSize
-    const data = filtered.slice(start, end)
+
+    // Fetch paginated rows
+    const rows = await db
+        .select()
+        .from(pageEvents)
+        .where(whereClause)
+        .orderBy(orderFn)
+        .limit(pageSize)
+        .offset((page - 1) * pageSize)
+
+    // Format avg duration as "Xm Xs" string
+    const data: AnalyticsTableRow[] = rows.map(r => ({
+        id: String(r.id),
+        page: r.page,
+        views: r.views,
+        uniqueVisitors: r.uniqueVisitors,
+        bounceRate: r.bounceRate,
+        avgDuration: `${Math.floor(r.avgDurationSec / 60)}m ${r.avgDurationSec % 60}s`,
+        conversions: r.conversions
+    }))
 
     return {
         data,
         meta: {
-            total: filtered.length,
+            total: Number(total),
             page,
             pageSize,
-            totalPages: Math.ceil(filtered.length / pageSize)
+            totalPages: Math.ceil(Number(total) / pageSize)
         }
     }
 })
