@@ -10,6 +10,13 @@ import DataTable from '~/components/ui/DataTable.vue'
 import DateRangePicker from '~/components/dashboard/DateRangePicker.vue'
 import type { AnalyticsTableRow, PaginatedResponse } from '~/types'
 
+// CSV Export
+function exportCsv() {
+  const params = new URLSearchParams()
+  if (search.value) params.set('q', search.value)
+  window.location.href = `/api/export/analytics?${params.toString()}`
+}
+
 definePageMeta({
   layout: 'dashboard',
   middleware: 'auth'
@@ -64,7 +71,14 @@ const columns = [
       
       <div class="flex gap-3">
         <DateRangePicker />
-        <button class="btn btn-primary btn-sm">Export CSV</button>
+        <button class="btn btn-primary btn-sm" @click="exportCsv">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 6px">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="7 10 12 15 17 10"/>
+            <line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+          Export CSV
+        </button>
       </div>
     </div>
 
